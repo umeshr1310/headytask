@@ -1,5 +1,7 @@
 package com.headytask.headytask;
 
+import android.app.NotificationManager;
+import android.app.ProgressDialog;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -8,11 +10,14 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
+import android.os.Handler;
+import android.support.v4.app.NotificationCompat;
 import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.support.v7.widget.GridLayoutManager;
 import android.support.v7.widget.RecyclerView;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -25,10 +30,12 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.headytask.headytask.api.ApiInterface;
 import com.headytask.headytask.api.BackgroundSyncService;
 import com.headytask.headytask.api.Common;
 import com.headytask.headytask.localdb.OfflineCategoryDBHandler;
 import com.headytask.headytask.localdb.OfflineDBHandler;
+import com.headytask.headytask.model.MainJson;
 import com.headytask.headytask.model.TypeData;
 
 
@@ -36,9 +43,13 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 
-public class MainActivity extends AppCompatActivity implements View.OnClickListener{
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
+import retrofit2.Retrofit;
+import retrofit2.converter.gson.GsonConverterFactory;
 
-    public static final String SYNC_DATA = "com.headytask.headytask.SYNC_DATA";
+public class MainActivity extends AppCompatActivity implements View.OnClickListener{
 
     private List<String> ranking_product_id_list = new ArrayList<>();
     private List<String> ranking_product_viewcount_list = new ArrayList<>();
@@ -66,42 +77,11 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private OfflineCategoryDBHandler offlineCatDB;
     private boolean connectStatus = false;
 
-
-    private BroadcastReceiver bReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            if(intent.getAction().equals(SYNC_DATA)) {
-                ranking_rankings_list = intent.getStringArrayListExtra("ranking_list");
-                ranking_product_id_list = intent.getStringArrayListExtra("product_id_list");
-                ranking_product_viewcount_list = intent.getStringArrayListExtra("view_count_list");
-                ranking_product_ordercount_list = intent.getStringArrayListExtra("order_count_list");
-                ranking_product_shares_list = intent.getStringArrayListExtra("shares_list");
-
-                category_id_list = intent.getStringArrayListExtra("category_id_list");
-                category_name_list = intent.getStringArrayListExtra("category_name_list");
-                category_child_category_list = intent.getStringArrayListExtra("category_child_category_list");
-                category_products_id_list = intent.getStringArrayListExtra("category_products_id_list");
-                category_products_name_list = intent.getStringArrayListExtra("category_products_name_list");
-                category_products_date_added_list = intent.getStringArrayListExtra("category_products_date_added_list");
-                category_products_tax_name_list = intent.getStringArrayListExtra("category_products_tax_name_list");
-                category_products_tax_value_list = intent.getStringArrayListExtra("category_products_tax_value_list");
-                category_products_variants_id_list = intent.getStringArrayListExtra("category_products_variants_id_list");
-                category_products_variants_color_list = intent.getStringArrayListExtra("category_products_variants_color_list");
-                category_products_variants_size_list = intent.getStringArrayListExtra("category_products_variants_size_list");
-                category_products_variants_price_list = intent.getStringArrayListExtra("category_products_variants_price_list");
-
-                System.out.println("Data received SyncActivity by receiver ranking_rankings_list:" + ranking_rankings_list.size());
-                System.out.println("Data received SyncActivity by receiver category_products_variants_size_list:" + category_products_variants_size_list.size());
-                //Do something with the string
-            }
-        }
-    };
-    LocalBroadcastManager bManager;
-
     Spinner spCategorySearch,spRanking;
     private RecyclerView recyclerView;
     Button searchBtn;
     String categoryTXT = "",rankingTXT = "";
+    protected ProgressDialog mProgressDialog;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -116,11 +96,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         connectStatus = checkInternetConnection();
         System.out.println("Connection :" + connectStatus);
 
-        bManager = LocalBroadcastManager.getInstance(this);
-        IntentFilter intentFilter = new IntentFilter();
-        intentFilter.addAction(SYNC_DATA);
-        bManager.registerReceiver(bReceiver, intentFilter);
-
         offlineDB = new OfflineDBHandler(getApplicationContext());
         SQLiteDatabase db = offlineDB.getWritableDatabase();
 
@@ -129,9 +104,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         mcursor.moveToFirst();
         int icount = mcursor.getInt(0);
         System.out.println("Count is icount:"+ icount);
-
-        //offlineCatDB = new OfflineCategoryDBHandler(getApplicationContext());
-        //SQLiteDatabase db1 = offlineCatDB.getWritableDatabase();
 
         String count1 = "SELECT count(*) FROM categories_table";
         Cursor mcursor1 = db.rawQuery(count1, null);
@@ -142,10 +114,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         if(connectStatus || ((icount<=0)||(icount1<=0))){
 
             clearArrayLists();
-            //Toast.makeText(getApplicationContext(),"service called", Toast.LENGTH_SHORT).show();
-            Intent i = new Intent(MainActivity.this, BackgroundSyncService.class);
-            i.putExtra("TAG","SYNC");
-            startService(i);
+            getDetailsFromServer();
         }
         else if((icount > 0)||(icount1>0)){
             clearArrayLists();
@@ -155,6 +124,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         else {
             Toast.makeText(getApplicationContext(),"Mobile Network/Wifi is Off",Toast.LENGTH_SHORT).show();
         }
+
         spCategorySearch.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
@@ -163,6 +133,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 if (imm != null) {
                     imm.hideSoftInputFromWindow(spCategorySearch.getWindowToken(), 0);
                 }
+                System.out.println("categoryTXT :"+categoryTXT);
             }
             @Override
             public void onNothingSelected(AdapterView<?> parent) {
@@ -177,8 +148,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 if (imm != null) {
                     imm.hideSoftInputFromWindow(spRanking.getWindowToken(), 0);
                 }
+                System.out.println("rankingTXT :"+rankingTXT);
             }
-
             @Override
             public void onNothingSelected(AdapterView<?> parent) {
                 spRanking.requestFocus();
@@ -186,6 +157,24 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         });
 
         searchBtn.setOnClickListener(this);
+        System.out.println("category_name_list.size() :"+category_name_list.size());
+
+        if(category_name_list.size()>0){
+            ArrayAdapter categoryAdapter = new ArrayAdapter(MainActivity.this,R.layout.main_spinner_item, category_name_list);
+            categoryAdapter.setDropDownViewResource(R.layout.spinner_item);
+            spCategorySearch.setAdapter(categoryAdapter);
+
+            categoryTXT = spCategorySearch.getSelectedItem().toString();
+        }
+
+
+
+       /* recyclerView.setHasFixedSize(true);
+        RecyclerView.LayoutManager layoutManager = new GridLayoutManager(getApplicationContext(), 2);
+        recyclerView.setLayoutManager(layoutManager);
+        ArrayList<TypeData> titles = prepareData(category_id_list);
+        MyDataAdapter adapter = new MyDataAdapter(getApplicationContext(), titles);
+        recyclerView.setAdapter(adapter);*/
     }
 
     public boolean checkInternetConnection() {
@@ -217,7 +206,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                     startActivity(i);*/
                 }
                 else {
-                    Toast.makeText(this,"Please select service",Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this,"Please select category",Toast.LENGTH_SHORT).show();
                 }
                 break;
         }
@@ -239,6 +228,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             category_id_list.clear();
         if (category_name_list.size() > 0)
             category_name_list.clear();
+            category_name_list.add(0,"All Categories");
         if (category_child_category_list.size() > 0)
             category_child_category_list.clear();
         if (category_products_id_list.size() > 0)
@@ -281,19 +271,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             ranking_product_ordercount_list.add(order_count.trim());
             ranking_product_shares_list.add(shares.trim());
         }
-        ArrayAdapter categoryAdapter = new ArrayAdapter(MainActivity.this,R.layout.main_spinner_item, category_id_list);
-        categoryAdapter.setDropDownViewResource(R.layout.spinner_item);
-        spCategorySearch.setAdapter(categoryAdapter);
-
-        categoryTXT = spCategorySearch.getSelectedItem().toString();
-
-        recyclerView.setHasFixedSize(true);
-        RecyclerView.LayoutManager layoutManager = new GridLayoutManager(getApplicationContext(), 2);
-        recyclerView.setLayoutManager(layoutManager);
-        ArrayList<TypeData> titles = prepareData(category_id_list);
-        MyDataAdapter adapter = new MyDataAdapter(getApplicationContext(), titles);
-        recyclerView.setAdapter(adapter);
-
     }
 
     private void getCategoriesDetailsDB() {
@@ -332,26 +309,194 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             category_products_variants_price_list.add(var_price.trim());
 
         }
+      /* ArrayAdapter categoryAdapter = new ArrayAdapter(MainActivity.this,R.layout.main_spinner_item, category_id_list);
+        categoryAdapter.setDropDownViewResource(R.layout.spinner_item);
+        spCategorySearch.setAdapter(categoryAdapter);
+
+        categoryTXT = spCategorySearch.getSelectedItem().toString();
+*/
+        /*recyclerView.setHasFixedSize(true);
+        RecyclerView.LayoutManager layoutManager = new GridLayoutManager(getApplicationContext(), 2);
+        recyclerView.setLayoutManager(layoutManager);
+        ArrayList<TypeData> titles = prepareData(category_products_name_list,
+                                            category_products_date_added_list,
+                                            category_products_tax_name_list,
+                                            category_products_tax_value_list,
+                                            category_products_variants_color_list,
+                                            category_products_variants_size_list,
+                                            category_products_variants_price_list);
+        MyDataAdapter adapter = new MyDataAdapter(getApplicationContext(), titles);
+        recyclerView.setAdapter(adapter);*/
     }
     //put customized data in grid
-    private ArrayList<TypeData> prepareData(ArrayList<String> servicesList) {
+    private ArrayList<TypeData> prepareData(List<String> category_products_name_list,
+                                            List<String> category_products_date_added_list,
+                                            List<String> category_products_tax_name_list,
+                                            List<String> category_products_tax_value_list,
+                                            List<String> category_products_variants_color_list,
+                                            List<String> category_products_variants_size_list,
+                                            List<String> category_products_variants_price_list
+                                            ) {
 
-        System.out.println("Arraylisrt inside preparedate :"+ servicesList.size());
+        System.out.println("Arraylisrt inside preparedate :"+ category_products_name_list.size());
 
-        ArrayList<TypeData> title_list = new ArrayList<>();
-        for (int i = 0; i < servicesList.size(); i++) {
-            TypeData title = new TypeData();
-            title.setType(servicesList.get(i));
-            /*if(i<image_urls.length) {
-                title.setImg(image_urls[i]);
-            }
-            else {
-                title.setImg(R.drawable.gift);
-            }*/
-            title_list.add(title);
+        ArrayList<TypeData> typedata_list = new ArrayList<>();
+        for (int i = 0; i < category_products_name_list.size(); i++) {
+            TypeData typeData = new TypeData();
+            typeData.setProduct_name(category_products_name_list.get(i));
+            typeData.setDate_added(category_products_date_added_list.get(i));
+            typeData.setTax_name(category_products_tax_name_list.get(i));
+            typeData.setTax_value(category_products_tax_value_list.get(i));
+            typeData.setVar_color(category_products_variants_color_list.get(i));
+            typeData.setVar_size(category_products_variants_size_list.get(i));
+            typeData.setVar_price(category_products_variants_price_list.get(i));
+
+            typedata_list.add(typeData);
+
         }
-        return title_list;
+        return typedata_list;
     }
+
+
+    /** Load user Data From Server and save to SQLite database **/
+    public void getDetailsFromServer() {
+        // boolean result = false;
+        offlineDB.deleteRanking();
+        offlineDB.deleteCategories();
+        clearArrayLists();
+        mProgressDialog = ProgressDialog.show(this, "Please wait","Loading data...", true);
+        Handler h = new Handler(getApplicationContext().getMainLooper());
+        // Although you need to pass an appropriate context
+        h.post(new Runnable() {
+            @Override
+            public void run() {
+                //  Toast.makeText(getApplicationContext(),message,Toast.LENGTH_SHORT).show();
+                Retrofit retrofit = new Retrofit.Builder().baseUrl(ApiInterface.url)
+                        .addConverterFactory(GsonConverterFactory.create())
+                        .build();
+                ApiInterface apiInterface = retrofit.create(ApiInterface.class);
+
+                Call<MainJson> call = apiInterface.getApiData();
+                call.enqueue(new Callback<MainJson>() {
+                    @Override
+                    public void onResponse(Call<MainJson> call, Response<MainJson> response) {
+                        MainJson mainJson = response.body();
+                        System.out.println("MainJson :" + mainJson);
+                        //Log.d("TAG Success", services.toString());
+                        if(Common.isNotNull(mainJson.toString())) {
+                            for (int i = 0; i < mainJson.getRankings().size(); i++) {
+                                ranking_rankings_list.add(mainJson.getRankings().get(i).getRanking().toString().trim());
+                                //System.out.println("ranking_rankings_list :"+ranking_rankings_list.get(i));
+                                for(int j=0;j<mainJson.getRankings().get(i).getProducts().size();j++){
+                                    ranking_product_id_list.add(String.valueOf(mainJson.getRankings().get(i).getProducts().get(j).getId()).trim());
+                                    // System.out.println("ranking_product_id_list :"+ranking_product_id_list.get(j));
+                                    ranking_product_viewcount_list.add(String.valueOf(mainJson.getRankings().get(i).getProducts().get(j).getViewCount()).trim());
+                                    // System.out.println("ranking_product_viewcount_list :"+ranking_product_viewcount_list.get(j));
+                                    ranking_product_ordercount_list.add(String.valueOf(mainJson.getRankings().get(i).getProducts().get(j).getOrderCount()).trim());
+                                    // System.out.println("ranking_product_ordercount_list :"+ranking_product_ordercount_list.get(j));
+                                    ranking_product_shares_list.add(String.valueOf(mainJson.getRankings().get(i).getProducts().get(j).getShares()).trim());
+                                    // System.out.println("ranking_product_shares_list :"+ranking_product_shares_list.get(j));
+                                    offlineDB.addRanking(mainJson.getRankings().get(i).getRanking().toString().trim(),
+                                            String.valueOf(mainJson.getRankings().get(i).getProducts().get(j).getId()).trim(),
+                                            String.valueOf(mainJson.getRankings().get(i).getProducts().get(j).getViewCount()).trim(),
+                                            String.valueOf(mainJson.getRankings().get(i).getProducts().get(j).getOrderCount()).trim(),
+                                            String.valueOf(mainJson.getRankings().get(i).getProducts().get(j).getShares()).trim()
+                                    );
+                                }
+                            }
+                            for (int i = 0; i < mainJson.getCategories().size(); i++) {
+                                category_id_list.add(String.valueOf(mainJson.getCategories().get(i).getId()).trim());
+                                //System.out.println("category_id_list :"+category_id_list.get(i));
+                                category_name_list.add(mainJson.getCategories().get(i).getName().toString().trim());
+                                // System.out.println("category_name_list :"+category_name_list.get(i));
+                                for(int m=0;m<mainJson.getCategories().get(i).getChildCategories().size();m++) {
+                                    category_child_category_list.add(String.valueOf(mainJson.getCategories().get(i).getChildCategories().get(m).intValue()).trim());
+                                    // System.out.println("category_child_category_list :" + category_child_category_list.get(m));
+                                }
+                                for(int j=0;j<mainJson.getCategories().get(i).getProducts().size();j++){
+                                    category_products_id_list.add(String.valueOf(mainJson.getCategories().get(i).getProducts().get(j).getId()).trim());
+                                    //System.out.println("category_products_id_list :"+category_products_id_list.get(j));
+                                    category_products_name_list.add(mainJson.getCategories().get(i).getProducts().get(j).getName().toString().trim());
+                                    // System.out.println("category_products_name_list :"+category_products_name_list.get(j));
+                                    category_products_date_added_list.add(mainJson.getCategories().get(i).getProducts().get(j).getDateAdded().toString().trim());
+                                    //System.out.println("category_products_date_added_list :"+category_products_date_added_list.get(j));
+
+                                    category_products_tax_name_list.add(mainJson.getCategories().get(i).getProducts().get(j).getTax().getName().toString().trim());
+                                    //System.out.println("category_products_tax_name_list :"+category_products_tax_name_list.get(j));
+                                    category_products_tax_value_list.add(String.valueOf(mainJson.getCategories().get(i).getProducts().get(j).getTax().getValue()).trim());
+                                    // System.out.println("category_products_tax_value_list :"+category_products_tax_value_list.get(j));
+
+                                    for(int k=0;k<mainJson.getCategories().get(i).getProducts().get(j).getVariants().size();k++) {
+                                        category_products_variants_id_list.add(String.valueOf(mainJson.getCategories().get(i).getProducts().get(j).getVariants().get(k).getId()).trim());
+                                        // System.out.println("category_products_variants_id_list :"+category_products_variants_id_list.get(k));
+                                        category_products_variants_color_list.add(mainJson.getCategories().get(i).getProducts().get(j).getVariants().get(k).getColor().toString().trim());
+                                        //System.out.println("category_products_variants_color_list :"+category_products_variants_color_list.get(k));
+                                        category_products_variants_size_list.add(String.valueOf(mainJson.getCategories().get(i).getProducts().get(j).getVariants().get(k).getSize()).trim());
+                                        //System.out.println("category_products_variants_size_list :"+category_products_variants_size_list.get(k));
+                                        category_products_variants_price_list.add(String.valueOf(mainJson.getCategories().get(i).getProducts().get(j).getVariants().get(k).getPrice()).trim());
+                                        //System.out.println("category_products_variants_price_list :"+category_products_variants_price_list.get(k));
+
+                                        offlineDB.addCategories(String.valueOf(mainJson.getCategories().get(i).getId()).trim(),
+                                                mainJson.getCategories().get(i).getName().toString().trim(),
+                                                String.valueOf(mainJson.getCategories().get(i).getChildCategories()).trim(),
+                                                String.valueOf(mainJson.getCategories().get(i).getProducts().get(j).getId()).trim(),
+                                                mainJson.getCategories().get(i).getProducts().get(j).getName().toString().trim(),
+                                                mainJson.getCategories().get(i).getProducts().get(j).getDateAdded().toString().trim(),
+                                                mainJson.getCategories().get(i).getProducts().get(j).getTax().getName().toString().trim(),
+                                                String.valueOf(mainJson.getCategories().get(i).getProducts().get(j).getTax().getValue()).trim(),
+                                                String.valueOf(mainJson.getCategories().get(i).getProducts().get(j).getVariants().get(k).getId()).trim(),
+                                                mainJson.getCategories().get(i).getProducts().get(j).getVariants().get(k).getColor().toString().trim(),
+                                                String.valueOf(mainJson.getCategories().get(i).getProducts().get(j).getVariants().get(k).getSize()).trim(),
+                                                String.valueOf(mainJson.getCategories().get(i).getProducts().get(j).getVariants().get(k).getPrice()).trim()
+                                        );
+                                    }
+                                }
+                            }
+                            ArrayAdapter categoryAdapter = new ArrayAdapter(MainActivity.this,R.layout.main_spinner_item, category_name_list);
+                            categoryAdapter.setDropDownViewResource(R.layout.spinner_item);
+                            spCategorySearch.setAdapter(categoryAdapter);
+                            categoryTXT = spCategorySearch.getSelectedItem().toString();
+
+                            ArrayAdapter rankingAdapter = new ArrayAdapter(MainActivity.this,R.layout.main_spinner_item, ranking_rankings_list);
+                            rankingAdapter.setDropDownViewResource(R.layout.spinner_item);
+                            spRanking.setAdapter(rankingAdapter);
+                            rankingTXT = spRanking.getSelectedItem().toString();
+
+                            recyclerView.setHasFixedSize(true);
+                            RecyclerView.LayoutManager layoutManager = new GridLayoutManager(getApplicationContext(), 1);
+                            recyclerView.setLayoutManager(layoutManager);
+                            ArrayList<TypeData> titles = prepareData(category_products_name_list,
+                                    category_products_date_added_list,
+                                    category_products_tax_name_list,
+                                    category_products_tax_value_list,
+                                    category_products_variants_color_list,
+                                    category_products_variants_size_list,
+                                    category_products_variants_price_list);
+                            MyDataAdapter adapter = new MyDataAdapter(getApplicationContext(), titles);
+                            recyclerView.setAdapter(adapter);
+                        }
+                        else {
+                            Toast.makeText(getApplicationContext(),"No Data Found",Toast.LENGTH_LONG).show();
+                        }
+                        mProgressDialog.dismiss();
+                    }
+                    @Override
+                    public void onFailure(Call<MainJson> call, Throwable t) {
+                        Log.d("TAG Rankings ERROR", t.toString());
+                        System.out.print(t);
+                        mProgressDialog.dismiss();
+                    }
+                });
+            }
+        });
+    }
+
+
+
+
+
+
+
     class MyDataAdapter extends RecyclerView.Adapter<MyDataAdapter.ViewHolder> {
         private ArrayList<TypeData> list;
         private Context context;
@@ -369,28 +514,38 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         @Override
         public void onBindViewHolder(MyDataAdapter.ViewHolder viewHolder, int i) {
-            viewHolder.tv_title.setText(list.get(i).getType());
-            viewHolder.img_icon.setImageResource(list.get(i).getImg());
+            viewHolder.tv_product_name.setText(list.get(i).getProduct_name());
+            viewHolder.tv_date_added.setText(list.get(i).getDate_added());
+            viewHolder.tv_tax_name.setText(list.get(i).getTax_name());
+            viewHolder.tv_tax_value.setText(list.get(i).getTax_value());
+            viewHolder.tv_var_color.setText(list.get(i).getVar_color());
+            viewHolder.tv_var_size.setText(list.get(i).getVar_size());
+            viewHolder.tv_var_price.setText(list.get(i).getVar_price());
+
             viewHolder.setClickListener(new ItemClickListener() {
                 @Override
                 public void onClick(View view, int position, boolean isLongClick) {
                     if (isLongClick) {
-                        //    CallIntent(position);
-                        //  Toast.makeText(context, "lClick", Toast.LENGTH_SHORT).show();
-                       /* Intent i = new Intent(MainActivity.this, ListingActivity.class);
-                        i.putExtra("SERVICE",list.get(position).getType());
-                        i.putExtra("CITY", cityTXT);
-                        i.putExtra("TALUKA", talukaTXT);
-                        startActivity(i);*/
+                        Intent i = new Intent(MainActivity.this, ListingActivity.class);
+                        i.putExtra("PRODUCT_NAME",list.get(position).getProduct_name());
+                        i.putExtra("DATE_ADDED", list.get(position).getDate_added());
+                        i.putExtra("TAX_NAME", list.get(position).getTax_name());
+                        i.putExtra("TAX_VALUE",list.get(position).getTax_value());
+                        i.putExtra("VAR_COLOR", list.get(position).getVar_color());
+                        i.putExtra("VAR_SIZE", list.get(position).getVar_size());
+                        i.putExtra("VAR_PRICE", list.get(position).getVar_price());
+                        startActivity(i);
 
                     } else {
-                        //  CallIntent(position);
-                        //  Toast.makeText(context, "sClick", Toast.LENGTH_SHORT).show();
-                       /* Intent i = new Intent(MainActivity.this, ListingActivity.class);
-                        i.putExtra("SERVICE",list.get(position).getType());
-                        i.putExtra("CITY", cityTXT);
-                        i.putExtra("TALUKA", talukaTXT);
-                        startActivity(i);*/
+                        Intent i = new Intent(MainActivity.this, ListingActivity.class);
+                        i.putExtra("PRODUCT_NAME",list.get(position).getProduct_name());
+                        i.putExtra("DATE_ADDED", list.get(position).getDate_added());
+                        i.putExtra("TAX_NAME", list.get(position).getTax_name());
+                        i.putExtra("TAX_VALUE",list.get(position).getTax_value());
+                        i.putExtra("VAR_COLOR", list.get(position).getVar_color());
+                        i.putExtra("VAR_SIZE", list.get(position).getVar_size());
+                        i.putExtra("VAR_PRICE", list.get(position).getVar_price());
+                        startActivity(i);
 
                     }
                 }
@@ -403,14 +558,19 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
 
         public class ViewHolder extends RecyclerView.ViewHolder implements View.OnClickListener, View.OnLongClickListener {
-            private TextView tv_title;
-            private ImageView img_icon;
+            private TextView tv_product_name, tv_date_added, tv_tax_name, tv_tax_value, tv_var_color, tv_var_size, tv_var_price;
             private ItemClickListener clickListener;
 
             public ViewHolder(View view) {
                 super(view);
-                tv_title = (TextView) view.findViewById(R.id.tv_title);
-                img_icon = (ImageView) view.findViewById(R.id.img_icon);
+                tv_product_name = (TextView) view.findViewById(R.id.tv_product_name);
+                tv_date_added = (TextView) view.findViewById(R.id.tv_date_added);
+                tv_tax_name = (TextView) view.findViewById(R.id.tv_tax_name);
+                tv_tax_value = (TextView) view.findViewById(R.id.tv_tax_value);
+                tv_var_color = (TextView) view.findViewById(R.id.tv_var_color);
+                tv_var_size = (TextView) view.findViewById(R.id.tv_var_size);
+                tv_var_price = (TextView) view.findViewById(R.id.tv_var_price);
+
                 view.setOnClickListener(this);
                 view.setOnLongClickListener(this);
             }
