@@ -1,18 +1,13 @@
 package com.headytask.headytask;
 
-import android.app.NotificationManager;
 import android.app.ProgressDialog;
-import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.os.Handler;
-import android.support.v4.app.NotificationCompat;
-import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.support.v7.widget.GridLayoutManager;
@@ -25,24 +20,19 @@ import android.view.inputmethod.InputMethodManager;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
-import android.widget.ImageView;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
-
 import com.headytask.headytask.api.ApiInterface;
-import com.headytask.headytask.api.BackgroundSyncService;
 import com.headytask.headytask.api.Common;
-import com.headytask.headytask.localdb.OfflineCategoryDBHandler;
 import com.headytask.headytask.localdb.OfflineDBHandler;
 import com.headytask.headytask.model.MainJson;
 import com.headytask.headytask.model.TypeData;
-
-
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
-
+import java.util.Set;
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
@@ -70,11 +60,9 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private List<String> category_products_variants_size_list = new ArrayList<>();
     private List<String> category_products_variants_price_list = new ArrayList<>();
 
-
-    String ranking,product_id, view_count, order_count,shares;
+    //ArrayAdapter categoryAdapter = null;
 
     private OfflineDBHandler offlineDB;
-    private OfflineCategoryDBHandler offlineCatDB;
     private boolean connectStatus = false;
 
     Spinner spCategorySearch,spRanking;
@@ -112,7 +100,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         System.out.println("Count is icount1:"+ icount1);
 
         if(connectStatus || ((icount<=0)||(icount1<=0))){
-
             clearArrayLists();
             getDetailsFromServer();
         }
@@ -149,6 +136,11 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                     imm.hideSoftInputFromWindow(spRanking.getWindowToken(), 0);
                 }
                 System.out.println("rankingTXT :"+rankingTXT);
+                if(Common.isNotNull(rankingTXT)){
+                    clearCategoryLists();
+                    //get data from local db sort by ranking
+                    getCategoryDetailsByRanking(rankingTXT);
+                }
             }
             @Override
             public void onNothingSelected(AdapterView<?> parent) {
@@ -158,23 +150,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         searchBtn.setOnClickListener(this);
         System.out.println("category_name_list.size() :"+category_name_list.size());
-
-        if(category_name_list.size()>0){
-            ArrayAdapter categoryAdapter = new ArrayAdapter(MainActivity.this,R.layout.main_spinner_item, category_name_list);
-            categoryAdapter.setDropDownViewResource(R.layout.spinner_item);
-            spCategorySearch.setAdapter(categoryAdapter);
-
-            categoryTXT = spCategorySearch.getSelectedItem().toString();
-        }
-
-
-
-       /* recyclerView.setHasFixedSize(true);
-        RecyclerView.LayoutManager layoutManager = new GridLayoutManager(getApplicationContext(), 2);
-        recyclerView.setLayoutManager(layoutManager);
-        ArrayList<TypeData> titles = prepareData(category_id_list);
-        MyDataAdapter adapter = new MyDataAdapter(getApplicationContext(), titles);
-        recyclerView.setAdapter(adapter);*/
     }
 
     public boolean checkInternetConnection() {
@@ -199,11 +174,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     public void onClick(View v) {
         switch(v.getId()) {
             case R.id.btn_search :
-                if(Common.isNotNull(categoryTXT) && Common.isNotNull(rankingTXT)){
-                   /* Intent i = new Intent(MainActivity.this, ListingActivity.class);
-                    i.putExtra("CATEGORY",categoryTXT);
-                    i.putExtra("RANKING", rankingTXT);
-                    startActivity(i);*/
+                if(Common.isNotNull(categoryTXT)){
+                    //load category wise data on search button click
+                    clearCategoryLists();
+                    getCategoryDetailsByCategory(categoryTXT);
                 }
                 else {
                     Toast.makeText(this,"Please select category",Toast.LENGTH_SHORT).show();
@@ -211,8 +185,31 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 break;
         }
     }
+    private  void clearCategoryLists(){
+        if (category_id_list.size() > 0)
+            category_id_list.clear();
+        if (category_child_category_list.size() > 0)
+            category_child_category_list.clear();
+        if (category_products_id_list.size() > 0)
+            category_products_id_list.clear();
+        if (category_products_name_list.size() > 0)
+            category_products_name_list.clear();
+        if (category_products_date_added_list.size() > 0)
+            category_products_date_added_list.clear();
+        if (category_products_tax_name_list.size() > 0)
+            category_products_tax_name_list.clear();
+        if (category_products_tax_value_list.size() > 0)
+            category_products_tax_value_list.clear();
+        if (category_products_variants_id_list.size() > 0)
+            category_products_variants_id_list.clear();
+        if (category_products_variants_color_list.size() > 0)
+            category_products_variants_color_list.clear();
+        if (category_products_variants_size_list.size() > 0)
+            category_products_variants_size_list.clear();
+        if (category_products_variants_price_list.size() > 0)
+            category_products_variants_price_list.clear();
+    }
     private void clearArrayLists() {
-
         if (ranking_rankings_list.size() > 0)
             ranking_rankings_list.clear();
         if (ranking_product_id_list.size() > 0)
@@ -250,29 +247,41 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         if (category_products_variants_price_list.size() > 0)
             category_products_variants_price_list.clear();
     }
+    //get all ranking data from local db
     private void getRankingDetailsDB() {
         // Fetching voter details from SQLite
         List<HashMap<String, String>> rankingDir = offlineDB.getRankingDetails();
         getrankingdetailsDB(rankingDir);
     }
-    private void getrankingdetailsDB(List<HashMap<String, String>> rankingDir) {
+    private  void getrankingdetailsDB(List<HashMap<String, String>> rankingDir) {
+       for (int i = 0; i < rankingDir.size(); i++) {
+                String ranking = rankingDir.get(i).get("RANKING");
+                String id = rankingDir.get(i).get("PRODUCTS_ID");
+                String view_count = rankingDir.get(i).get("VIEW_COUNT");
+                String order_count = rankingDir.get(i).get("ORDER_COUNT");
+                String shares = rankingDir.get(i).get("SHARES");
 
-        for (int i = 0; i < rankingDir.size(); i++) {
-            String ranking = rankingDir.get(i).get("RANKING");
-            String id = rankingDir.get(i).get("PRODUCTS_ID");
-            String view_count = rankingDir.get(i).get("VIEW_COUNT");
-            String order_count = rankingDir.get(i).get("ORDER_COUNT");
-            String shares = rankingDir.get(i).get("SHARES");
-
-            //add data to arraylist
-            ranking_rankings_list.add(ranking.trim());
-            ranking_product_id_list.add(id.trim());
-            ranking_product_viewcount_list.add(view_count.trim());
-            ranking_product_ordercount_list.add(order_count.trim());
-            ranking_product_shares_list.add(shares.trim());
-        }
+                //add data to arraylist
+                ranking_rankings_list.add(ranking.trim());
+                ranking_product_id_list.add(id.trim());
+                ranking_product_viewcount_list.add(view_count.trim());
+                ranking_product_ordercount_list.add(order_count.trim());
+                ranking_product_shares_list.add(shares.trim());
+               // System.out.println("ranking_rankings_list.get(i):"+ranking_rankings_list.get(i));
+            }
+        System.out.println("ranking_rankings_list size:"+ranking_rankings_list.size());
+       //remove duplicated from arraylist
+       Set<String> hs = new LinkedHashSet<>();
+        hs.addAll(ranking_rankings_list);
+        ranking_rankings_list.clear();
+        ranking_rankings_list.addAll(hs);
+            ArrayAdapter rankingAdapter = new ArrayAdapter(MainActivity.this,R.layout.main_spinner_item, ranking_rankings_list);
+            rankingAdapter.setDropDownViewResource(R.layout.spinner_item);
+            spRanking.setAdapter(rankingAdapter);
+            rankingTXT = spRanking.getSelectedItem().toString();
     }
 
+    //get all category data from local db
     private void getCategoriesDetailsDB() {
         // Fetching voter details from SQLite
         List<HashMap<String, String>> categoryDir = offlineDB.getCategoriesDetails();
@@ -307,27 +316,131 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             category_products_variants_color_list.add(var_color.trim());
             category_products_variants_size_list.add(var_size.trim());
             category_products_variants_price_list.add(var_price.trim());
-
         }
-      /* ArrayAdapter categoryAdapter = new ArrayAdapter(MainActivity.this,R.layout.main_spinner_item, category_id_list);
+        //remove duplicated from arraylist
+        Set<String> hs = new LinkedHashSet<>();
+        hs.addAll(category_name_list);
+        category_name_list.clear();
+        category_name_list.addAll(hs);
+        ArrayAdapter categoryAdapter = new ArrayAdapter(MainActivity.this,R.layout.main_spinner_item, category_name_list);
         categoryAdapter.setDropDownViewResource(R.layout.spinner_item);
         spCategorySearch.setAdapter(categoryAdapter);
-
         categoryTXT = spCategorySearch.getSelectedItem().toString();
-*/
-        /*recyclerView.setHasFixedSize(true);
-        RecyclerView.LayoutManager layoutManager = new GridLayoutManager(getApplicationContext(), 2);
+
+        recyclerView.setHasFixedSize(true);
+        RecyclerView.LayoutManager layoutManager = new GridLayoutManager(getApplicationContext(), 1);
         recyclerView.setLayoutManager(layoutManager);
         ArrayList<TypeData> titles = prepareData(category_products_name_list,
-                                            category_products_date_added_list,
-                                            category_products_tax_name_list,
-                                            category_products_tax_value_list,
-                                            category_products_variants_color_list,
-                                            category_products_variants_size_list,
-                                            category_products_variants_price_list);
+                category_products_date_added_list,
+                category_products_tax_name_list,
+                category_products_tax_value_list,
+                category_products_variants_color_list,
+                category_products_variants_size_list,
+                category_products_variants_price_list);
         MyDataAdapter adapter = new MyDataAdapter(getApplicationContext(), titles);
-        recyclerView.setAdapter(adapter);*/
+        recyclerView.setAdapter(adapter);
+        categoryAdapter.notifyDataSetChanged();
     }
+    //get data from local db sort by category
+    private void getCategoryDetailsByCategory(String category_name) {
+        // Fetching voter details from SQLite
+        List<HashMap<String, String>> categoryDir = offlineDB.getCategoriesDetailsByCategory(category_name);
+        getcategoriesdetailsDBByCategory(categoryDir);
+    }
+    private void getcategoriesdetailsDBByCategory(List<HashMap<String, String>> categoryDir) {
+
+        for (int i = 0; i < categoryDir.size(); i++) {
+            String cat_id = categoryDir.get(i).get("CATEGORIES_ID");
+           // String cat_name = categoryDir.get(i).get("CATEGORIES_NAME");
+            String child_cat = categoryDir.get(i).get("CATEGORIES_CHILD_CATEGORIES");
+            String prod_id = categoryDir.get(i).get("CATEGORIES_PRODUCTS_ID");
+            String prod_name = categoryDir.get(i).get("CATEGORIES_PRODUCTS_NAME");
+            String date_added = categoryDir.get(i).get("CATEGORIES_PRODUCTS_DATE_ADDED");
+            String tax_name = categoryDir.get(i).get("CATEGORIES_PRODUCTS_TAX_NAME");
+            String tax_value = categoryDir.get(i).get("CATEGORIES_PRODUCTS_TAX_VALUE");
+            String var_id = categoryDir.get(i).get("CATEGORIES_PRODUCTS_VARIANTS_ID");
+            String var_color = categoryDir.get(i).get("CATEGORIES_PRODUCTS_VARIANTS_COLOR");
+            String var_size = categoryDir.get(i).get("CATEGORIES_PRODUCTS_VARIANTS_SIZE");
+            String var_price = categoryDir.get(i).get("CATEGORIES_PRODUCTS_VARIANTS_PRICE");
+
+            //add data to arraylist
+            category_id_list.add(cat_id.trim());
+            //category_name_list.add(cat_name.trim());
+            category_child_category_list.add(child_cat.trim());
+            category_products_id_list.add(prod_id.trim());
+            category_products_name_list.add(prod_name.trim());
+            category_products_date_added_list.add(date_added.trim());
+            category_products_tax_name_list.add(tax_name.trim());
+            category_products_tax_value_list.add(tax_value.trim());
+            category_products_variants_id_list.add(var_id.trim());
+            category_products_variants_color_list.add(var_color.trim());
+            category_products_variants_size_list.add(var_size.trim());
+            category_products_variants_price_list.add(var_price.trim());
+        }
+        recyclerView.setHasFixedSize(true);
+        RecyclerView.LayoutManager layoutManager = new GridLayoutManager(getApplicationContext(), 1);
+        recyclerView.setLayoutManager(layoutManager);
+        ArrayList<TypeData> titles = prepareData(category_products_name_list,
+                category_products_date_added_list,
+                category_products_tax_name_list,
+                category_products_tax_value_list,
+                category_products_variants_color_list,
+                category_products_variants_size_list,
+                category_products_variants_price_list);
+        MyDataAdapter adapter = new MyDataAdapter(getApplicationContext(), titles);
+        recyclerView.setAdapter(adapter);
+
+    }
+    //get data from local db sort by ranking
+    private void getCategoryDetailsByRanking(String ranking) {
+        // Fetching category details from SQLite
+        List<HashMap<String, String>> categoryDir = offlineDB.getCategoriesDetailsByRanking(ranking);
+        getcategoriesdetailsDBByRanking(categoryDir);
+    }
+    private void getcategoriesdetailsDBByRanking(List<HashMap<String, String>> categoryDir) {
+
+        for (int i = 0; i < categoryDir.size(); i++) {
+            String cat_id = categoryDir.get(i).get("CATEGORIES_ID");
+            // String cat_name = categoryDir.get(i).get("CATEGORIES_NAME");
+            String child_cat = categoryDir.get(i).get("CATEGORIES_CHILD_CATEGORIES");
+            String prod_id = categoryDir.get(i).get("CATEGORIES_PRODUCTS_ID");
+            String prod_name = categoryDir.get(i).get("CATEGORIES_PRODUCTS_NAME");
+            String date_added = categoryDir.get(i).get("CATEGORIES_PRODUCTS_DATE_ADDED");
+            String tax_name = categoryDir.get(i).get("CATEGORIES_PRODUCTS_TAX_NAME");
+            String tax_value = categoryDir.get(i).get("CATEGORIES_PRODUCTS_TAX_VALUE");
+            String var_id = categoryDir.get(i).get("CATEGORIES_PRODUCTS_VARIANTS_ID");
+            String var_color = categoryDir.get(i).get("CATEGORIES_PRODUCTS_VARIANTS_COLOR");
+            String var_size = categoryDir.get(i).get("CATEGORIES_PRODUCTS_VARIANTS_SIZE");
+            String var_price = categoryDir.get(i).get("CATEGORIES_PRODUCTS_VARIANTS_PRICE");
+
+            //add data to arraylist
+            category_id_list.add(cat_id.trim());
+            //category_name_list.add(cat_name.trim());
+            category_child_category_list.add(child_cat.trim());
+            category_products_id_list.add(prod_id.trim());
+            category_products_name_list.add(prod_name.trim());
+            category_products_date_added_list.add(date_added.trim());
+            category_products_tax_name_list.add(tax_name.trim());
+            category_products_tax_value_list.add(tax_value.trim());
+            category_products_variants_id_list.add(var_id.trim());
+            category_products_variants_color_list.add(var_color.trim());
+            category_products_variants_size_list.add(var_size.trim());
+            category_products_variants_price_list.add(var_price.trim());
+        }
+        recyclerView.setHasFixedSize(true);
+        RecyclerView.LayoutManager layoutManager = new GridLayoutManager(getApplicationContext(), 1);
+        recyclerView.setLayoutManager(layoutManager);
+        ArrayList<TypeData> titles = prepareData(category_products_name_list,
+                category_products_date_added_list,
+                category_products_tax_name_list,
+                category_products_tax_value_list,
+                category_products_variants_color_list,
+                category_products_variants_size_list,
+                category_products_variants_price_list);
+        MyDataAdapter adapter = new MyDataAdapter(getApplicationContext(), titles);
+        recyclerView.setAdapter(adapter);
+    }
+
     //put customized data in grid
     private ArrayList<TypeData> prepareData(List<String> category_products_name_list,
                                             List<String> category_products_date_added_list,
@@ -352,11 +465,9 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             typeData.setVar_price(category_products_variants_price_list.get(i));
 
             typedata_list.add(typeData);
-
         }
         return typedata_list;
     }
-
 
     /** Load user Data From Server and save to SQLite database **/
     public void getDetailsFromServer() {
@@ -386,16 +497,12 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                         if(Common.isNotNull(mainJson.toString())) {
                             for (int i = 0; i < mainJson.getRankings().size(); i++) {
                                 ranking_rankings_list.add(mainJson.getRankings().get(i).getRanking().toString().trim());
-                                //System.out.println("ranking_rankings_list :"+ranking_rankings_list.get(i));
                                 for(int j=0;j<mainJson.getRankings().get(i).getProducts().size();j++){
                                     ranking_product_id_list.add(String.valueOf(mainJson.getRankings().get(i).getProducts().get(j).getId()).trim());
-                                    // System.out.println("ranking_product_id_list :"+ranking_product_id_list.get(j));
                                     ranking_product_viewcount_list.add(String.valueOf(mainJson.getRankings().get(i).getProducts().get(j).getViewCount()).trim());
-                                    // System.out.println("ranking_product_viewcount_list :"+ranking_product_viewcount_list.get(j));
                                     ranking_product_ordercount_list.add(String.valueOf(mainJson.getRankings().get(i).getProducts().get(j).getOrderCount()).trim());
-                                    // System.out.println("ranking_product_ordercount_list :"+ranking_product_ordercount_list.get(j));
                                     ranking_product_shares_list.add(String.valueOf(mainJson.getRankings().get(i).getProducts().get(j).getShares()).trim());
-                                    // System.out.println("ranking_product_shares_list :"+ranking_product_shares_list.get(j));
+                                    //save ranking data to local db
                                     offlineDB.addRanking(mainJson.getRankings().get(i).getRanking().toString().trim(),
                                             String.valueOf(mainJson.getRankings().get(i).getProducts().get(j).getId()).trim(),
                                             String.valueOf(mainJson.getRankings().get(i).getProducts().get(j).getViewCount()).trim(),
@@ -406,36 +513,22 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                             }
                             for (int i = 0; i < mainJson.getCategories().size(); i++) {
                                 category_id_list.add(String.valueOf(mainJson.getCategories().get(i).getId()).trim());
-                                //System.out.println("category_id_list :"+category_id_list.get(i));
                                 category_name_list.add(mainJson.getCategories().get(i).getName().toString().trim());
-                                // System.out.println("category_name_list :"+category_name_list.get(i));
                                 for(int m=0;m<mainJson.getCategories().get(i).getChildCategories().size();m++) {
                                     category_child_category_list.add(String.valueOf(mainJson.getCategories().get(i).getChildCategories().get(m).intValue()).trim());
-                                    // System.out.println("category_child_category_list :" + category_child_category_list.get(m));
                                 }
                                 for(int j=0;j<mainJson.getCategories().get(i).getProducts().size();j++){
                                     category_products_id_list.add(String.valueOf(mainJson.getCategories().get(i).getProducts().get(j).getId()).trim());
-                                    //System.out.println("category_products_id_list :"+category_products_id_list.get(j));
                                     category_products_name_list.add(mainJson.getCategories().get(i).getProducts().get(j).getName().toString().trim());
-                                    // System.out.println("category_products_name_list :"+category_products_name_list.get(j));
                                     category_products_date_added_list.add(mainJson.getCategories().get(i).getProducts().get(j).getDateAdded().toString().trim());
-                                    //System.out.println("category_products_date_added_list :"+category_products_date_added_list.get(j));
-
                                     category_products_tax_name_list.add(mainJson.getCategories().get(i).getProducts().get(j).getTax().getName().toString().trim());
-                                    //System.out.println("category_products_tax_name_list :"+category_products_tax_name_list.get(j));
                                     category_products_tax_value_list.add(String.valueOf(mainJson.getCategories().get(i).getProducts().get(j).getTax().getValue()).trim());
-                                    // System.out.println("category_products_tax_value_list :"+category_products_tax_value_list.get(j));
-
                                     for(int k=0;k<mainJson.getCategories().get(i).getProducts().get(j).getVariants().size();k++) {
                                         category_products_variants_id_list.add(String.valueOf(mainJson.getCategories().get(i).getProducts().get(j).getVariants().get(k).getId()).trim());
-                                        // System.out.println("category_products_variants_id_list :"+category_products_variants_id_list.get(k));
                                         category_products_variants_color_list.add(mainJson.getCategories().get(i).getProducts().get(j).getVariants().get(k).getColor().toString().trim());
-                                        //System.out.println("category_products_variants_color_list :"+category_products_variants_color_list.get(k));
                                         category_products_variants_size_list.add(String.valueOf(mainJson.getCategories().get(i).getProducts().get(j).getVariants().get(k).getSize()).trim());
-                                        //System.out.println("category_products_variants_size_list :"+category_products_variants_size_list.get(k));
                                         category_products_variants_price_list.add(String.valueOf(mainJson.getCategories().get(i).getProducts().get(j).getVariants().get(k).getPrice()).trim());
-                                        //System.out.println("category_products_variants_price_list :"+category_products_variants_price_list.get(k));
-
+                                        //save category data to local db
                                         offlineDB.addCategories(String.valueOf(mainJson.getCategories().get(i).getId()).trim(),
                                                 mainJson.getCategories().get(i).getName().toString().trim(),
                                                 String.valueOf(mainJson.getCategories().get(i).getChildCategories()).trim(),
@@ -474,6 +567,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                                     category_products_variants_price_list);
                             MyDataAdapter adapter = new MyDataAdapter(getApplicationContext(), titles);
                             recyclerView.setAdapter(adapter);
+                            //categoryAdapter.notifyDataSetChanged();
                         }
                         else {
                             Toast.makeText(getApplicationContext(),"No Data Found",Toast.LENGTH_LONG).show();
@@ -491,12 +585,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         });
     }
 
-
-
-
-
-
-
+//inner Adapter class for showing data in recyclerview
     class MyDataAdapter extends RecyclerView.Adapter<MyDataAdapter.ViewHolder> {
         private ArrayList<TypeData> list;
         private Context context;
@@ -505,13 +594,11 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             this.list = list;
             this.context = context;
         }
-
         @Override
         public MyDataAdapter.ViewHolder onCreateViewHolder(ViewGroup viewGroup, int i) {
             View view = LayoutInflater.from(viewGroup.getContext()).inflate(R.layout.custom_item, viewGroup, false);
             return new MyDataAdapter.ViewHolder(view);
         }
-
         @Override
         public void onBindViewHolder(MyDataAdapter.ViewHolder viewHolder, int i) {
             viewHolder.tv_product_name.setText(list.get(i).getProduct_name());
@@ -546,12 +633,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                         i.putExtra("VAR_SIZE", list.get(position).getVar_size());
                         i.putExtra("VAR_PRICE", list.get(position).getVar_price());
                         startActivity(i);
-
                     }
                 }
             });
         }
-
         @Override
         public int getItemCount() {
             return list.size();
@@ -578,12 +663,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             public void setClickListener(ItemClickListener itemClickListener) {
                 this.clickListener = itemClickListener;
             }
-
             @Override
             public void onClick(View v) {
                 clickListener.onClick(v, getPosition(), false);
             }
-
             @Override
             public boolean onLongClick(View v) {
                 clickListener.onClick(v, getPosition(), true);

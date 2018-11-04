@@ -34,10 +34,5 @@ public class ListingActivity extends AppCompatActivity {
         tv_var_color.setText("Color :"+var_color);
         tv_var_size.setText("Size :"+var_size);
         tv_var_price.setText("Price :"+var_price);
-
-
-
-
-
     }
 }

@@ -41,12 +41,9 @@ public class OfflineDBHandler extends SQLiteOpenHelper {
     private static final String KEY_CATEGORIES_PRODUCTS_VARIANTS_SIZE = "categories_products_variants_size";
     private static final String KEY_CATEGORIES_PRODUCTS_VARIANTS_PRICE = "categories_products_variants_price";
 
-
-
     public OfflineDBHandler(Context context) {
         super(context, DATABASE_NAME, null, DATABASE_VERSION);
     }
-
     // Creating Tables
     @Override
     public void onCreate(SQLiteDatabase db) {
@@ -164,7 +161,7 @@ public class OfflineDBHandler extends SQLiteOpenHelper {
 
                 Log.d(TAG, "Fetching RANKING from Sqlite: " + user.toString());
 
-             //   list.add(user);
+                list.add(user);
             } while (cursor.moveToNext());
         }
         cursor.close();
@@ -208,7 +205,7 @@ public class OfflineDBHandler extends SQLiteOpenHelper {
 
                 Log.d(TAG, "Fetching CATEGORIES from Sqlite: " + user.toString());
 
-                //   list.add(user);
+                   list.add(user);
             } while (cursor.moveToNext());
         }
         cursor.close();
@@ -218,7 +215,91 @@ public class OfflineDBHandler extends SQLiteOpenHelper {
         return list;
     }
 
+    /**
+     * Getting categories data by category name from database
+     * */
+    public List<HashMap<String, String>> getCategoriesDetailsByCategory(String category_name) {
 
+        List<HashMap<String, String>> list = new ArrayList<HashMap<String, String>>();
+
+        //HashMap<String, String> user = new HashMap<String, String>();
+        String selectQuery = "SELECT  * FROM " + TABLE_CATEGORIES + " WHERE " + KEY_CATEGORIES_NAME +"='"+category_name+"'";
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.rawQuery(selectQuery, null);
+        // Move to first row
+        cursor.moveToFirst();
+        if (cursor != null && cursor.moveToFirst()) {
+            do {
+
+                HashMap<String, String> user = new HashMap<String, String>();
+
+                user.put("CATEGORIES_ID", cursor.getString(0));
+                user.put("CATEGORIES_NAME", cursor.getString(1));
+                user.put("CATEGORIES_CHILD_CATEGORIES", cursor.getString(2));
+                user.put("CATEGORIES_PRODUCTS_ID", cursor.getString(3));
+                user.put("CATEGORIES_PRODUCTS_NAME", cursor.getString(4));
+                user.put("CATEGORIES_PRODUCTS_DATE_ADDED", cursor.getString(5));
+                user.put("CATEGORIES_PRODUCTS_TAX_NAME", cursor.getString(6));
+                user.put("CATEGORIES_PRODUCTS_TAX_VALUE", cursor.getString(7));
+                user.put("CATEGORIES_PRODUCTS_VARIANTS_ID", cursor.getString(8));
+                user.put("CATEGORIES_PRODUCTS_VARIANTS_COLOR", cursor.getString(9));
+                user.put("CATEGORIES_PRODUCTS_VARIANTS_SIZE", cursor.getString(10));
+                user.put("CATEGORIES_PRODUCTS_VARIANTS_PRICE", cursor.getString(11));
+
+                Log.d(TAG, "Fetching CATEGORIES from Sqlite: " + user.toString());
+
+                list.add(user);
+            } while (cursor.moveToNext());
+        }
+        cursor.close();
+        db.close();
+        //   return user;
+
+        return list;
+    }
+
+    /**
+     * Getting categories data by ranking  from database
+     * */
+    public List<HashMap<String, String>> getCategoriesDetailsByRanking(String ranking) {
+
+        List<HashMap<String, String>> list = new ArrayList<HashMap<String, String>>();
+
+        //HashMap<String, String> user = new HashMap<String, String>();
+        String selectQuery = "SELECT  * FROM " + TABLE_CATEGORIES + " CAT INNER JOIN " + TABLE_RANKINGS + " RANK ON CAT."+ KEY_CATEGORIES_PRODUCTS_ID +" = RANK."+ KEY_PRODUCTS_ID +" WHERE RANK." + KEY_RANKING +" ='"+ranking+"'";
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.rawQuery(selectQuery, null);
+        // Move to first row
+        cursor.moveToFirst();
+        if (cursor != null && cursor.moveToFirst()) {
+            do {
+
+                HashMap<String, String> user = new HashMap<String, String>();
+
+                user.put("CATEGORIES_ID", cursor.getString(0));
+                user.put("CATEGORIES_NAME", cursor.getString(1));
+                user.put("CATEGORIES_CHILD_CATEGORIES", cursor.getString(2));
+                user.put("CATEGORIES_PRODUCTS_ID", cursor.getString(3));
+                user.put("CATEGORIES_PRODUCTS_NAME", cursor.getString(4));
+                user.put("CATEGORIES_PRODUCTS_DATE_ADDED", cursor.getString(5));
+                user.put("CATEGORIES_PRODUCTS_TAX_NAME", cursor.getString(6));
+                user.put("CATEGORIES_PRODUCTS_TAX_VALUE", cursor.getString(7));
+                user.put("CATEGORIES_PRODUCTS_VARIANTS_ID", cursor.getString(8));
+                user.put("CATEGORIES_PRODUCTS_VARIANTS_COLOR", cursor.getString(9));
+                user.put("CATEGORIES_PRODUCTS_VARIANTS_SIZE", cursor.getString(10));
+                user.put("CATEGORIES_PRODUCTS_VARIANTS_PRICE", cursor.getString(11));
+
+                Log.d(TAG, "Fetching CATEGORIES from Sqlite: " + user.toString());
+
+                list.add(user);
+            } while (cursor.moveToNext());
+        }
+        cursor.close();
+        db.close();
+        //   return user;
+
+        return list;
+    }
     /**
      * Re create database Delete all tables and create them again
      * */

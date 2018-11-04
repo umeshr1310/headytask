@@ -30,12 +30,6 @@
             android:theme="@style/AppTheme"
             android:windowSoftInputMode="stateHidden|adjustPan" />
 
-        <service
-            android:name=".api.BackgroundSyncService"
-            android:enabled="true"
-            android:exported="false" />
-
-        <activity android:name=".Main2Activity" />
     </application>
 
 </manifest>

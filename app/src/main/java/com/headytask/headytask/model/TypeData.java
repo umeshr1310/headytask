@@ -5,16 +5,6 @@ package com.headytask.headytask.model;
  */
 
 public class TypeData {
-    /*public TypeData(String product_name, String date_added, String tax_name, String tax_value, String var_color, String var_size, String var_price) {
-        this.product_name = product_name;
-        this.date_added = date_added;
-        this.tax_name = tax_name;
-        this.tax_value = tax_value;
-        this.var_color = var_color;
-        this.var_size = var_size;
-        this.var_price = var_price;
-    }*/
-
     private String product_name, date_added, tax_name, tax_value, var_color, var_size, var_price;
 
     public String getProduct_name() {
